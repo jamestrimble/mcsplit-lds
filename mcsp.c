@@ -371,9 +371,23 @@ void remove_bidomain(vector<Bidomain>& domains, int idx) {
 
 void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         vector<VtxPair> & current, vector<Bidomain> & domains,
-        vector<int> & left, vector<int> & right, unsigned int matching_size_goal)
+        vector<int> & left, vector<int> & right,
+        int num_discreps, const int max_discreps, bool& max_discreps_achieved,
+        unsigned int matching_size_goal)
 {
+    if (num_discreps == max_discreps)
+        max_discreps_achieved = true;
+
+    if (num_discreps > max_discreps)
+        return;
+
     if (abort_due_to_timeout)
+        return;
+
+    int right_len_total = 0;
+    for (Bidomain & domain : domains)
+        right_len_total += domain.right_len;
+    if (num_discreps + right_len_total < max_discreps)
         return;
 
     if (arguments.verbose) show(current, domains, left, right);
@@ -413,13 +427,16 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
                 arguments.directed || arguments.edge_labelled);
         current.push_back(VtxPair(v, w));
-        solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal);
+        solve(g0, g1, incumbent, current, new_domains, left, right,
+                num_discreps, max_discreps, max_discreps_achieved, matching_size_goal);
         current.pop_back();
+        num_discreps++;
     }
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
-    solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal);
+    solve(g0, g1, incumbent, current, domains, left, right,
+            num_discreps, max_discreps, max_discreps_achieved, matching_size_goal);
 }
 
 vector<VtxPair> mcs(const Graph & g0, const Graph & g1) {
@@ -459,20 +476,32 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1) {
     vector<VtxPair> incumbent;
 
     if (arguments.big_first) {
-        for (int k=0; k<g0.n; k++) {
-            unsigned int goal = g0.n - k;
+        exit(1);
+//        for (int k=0; k<g0.n; k++) {
+//            unsigned int goal = g0.n - k;
+//            auto left_copy = left;
+//            auto right_copy = right;
+//            auto domains_copy = domains;
+//            vector<VtxPair> current;
+//            solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal);
+//            if (incumbent.size() == goal || abort_due_to_timeout) break;
+//            if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
+//        }
+
+    } else {
+        int max_discreps = 0;
+        bool max_discreps_achieved;
+        do {
+            max_discreps_achieved = false;
             auto left_copy = left;
             auto right_copy = right;
             auto domains_copy = domains;
             vector<VtxPair> current;
-            solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal);
-            if (incumbent.size() == goal || abort_due_to_timeout) break;
-            if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
-        }
-
-    } else {
-        vector<VtxPair> current;
-        solve(g0, g1, incumbent, current, domains, left, right, 1);
+            solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy,
+                    0, max_discreps, max_discreps_achieved, 1);
+            max_discreps++;
+            //cout << max_discreps << std::endl;
+        } while (max_discreps_achieved);
     }
 
     return incumbent;
